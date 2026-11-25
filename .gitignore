@@ -1,0 +1,21 @@
+# 本地项目记忆与 Python 缓存
+.workbuddy/
+__pycache__/
+*.py[cod]
+
+# 行情数据与筛选结果：含第三方数据，禁止入库或分发
+output/.cache/
+output/expma_screen_*.csv
+output/expma_screen_*.json
+output/scan_*.log
+output/archive/
+processed_image_*.png
+
+# 本地依赖目录：公开发布时用 requirements.txt 安装，不提交二进制包
+vendor/
+
+# 编辑器与系统文件
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

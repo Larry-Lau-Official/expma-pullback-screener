@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1b2233"/>
+      <stop offset="1" stop-color="#0e1420"/>
+    </linearGradient>
+    <linearGradient id="short" x1="0" y1="1" x2="1" y2="0">
+      <stop offset="0" stop-color="#ff7a7a"/>
+      <stop offset="1" stop-color="#ff3b3b"/>
+    </linearGradient>
+    <linearGradient id="long" x1="0" y1="1" x2="1" y2="0">
+      <stop offset="0" stop-color="#ffd166"/>
+      <stop offset="1" stop-color="#ffb703"/>
+    </linearGradient>
+    <filter id="glow" x="-120%" y="-120%" width="340%" height="340%">
+      <feGaussianBlur stdDeviation="20" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  <rect width="1024" height="1024" rx="224" fill="url(#bg)"/>
+
+  <!-- 参考网格 -->
+  <g stroke="#ffffff" stroke-opacity="0.06" stroke-width="3">
+    <line x1="110" y1="330" x2="914" y2="330"/>
+    <line x1="110" y1="510" x2="914" y2="510"/>
+    <line x1="110" y1="690" x2="914" y2="690"/>
+  </g>
+
+  <!-- EMA2 长期线（黄）：平滑上升 -->
+  <path d="M 120 730 C 320 700, 520 610, 700 520 C 800 472, 860 450, 900 442"
+        fill="none" stroke="url(#long)" stroke-width="30"
+        stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- EMA1 短期线（红）：冲高后回落，贴近长期线 -->
+  <path d="M 120 782 C 260 772, 360 640, 460 510 C 560 380, 630 272, 690 298 C 750 324, 800 410, 856 444"
+        fill="none" stroke="url(#short)" stroke-width="30"
+        stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- 回踩触点：双线汇合处的信号点 -->
+  <circle cx="856" cy="444" r="32" fill="#ffffff" filter="url(#glow)"/>
+  <circle cx="856" cy="444" r="13" fill="#ff3b3b"/>
+</svg>

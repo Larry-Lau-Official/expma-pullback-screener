@@ -1,0 +1,4 @@
+# BaoStock（证券宝）0.9.4，BSD 许可
+# pandas / numpy / python-dateutil 等依赖会由 pip 自动安装
+# 建议使用 Python 3.10 及以上版本（开发验证环境为 3.13）
+baostock==0.9.4
