@@ -70,7 +70,7 @@ cd expma-pullback-screener
 python -m pip install -r requirements.txt
 ```
 
-`requirements.txt` declares only `baostock==0.9.4`; pandas, numpy and other dependencies are installed automatically by pip. The `vendor/` binary directory is **not committed**, avoiding compatibility issues across Python versions and operating systems.
+`requirements.txt` declares `baostock==0.9.4` and `openpyxl==3.1.5`; pandas, numpy and other dependencies are installed automatically by pip. The `vendor/` binary directory is **not committed**, avoiding compatibility issues across Python versions and operating systems.
 
 ### Install as a WorkBuddy skill
 
@@ -96,7 +96,9 @@ From the repository root:
 python scripts/screen.py
 ```
 
-The program serially scans the filtered universe and writes results to `output/expma_screen_<timestamp>.csv` and a matching `.json`. A first full-market scan takes about **20–40 minutes** depending on the network; reruns on the same trading day use the cache and usually finish in seconds to tens of seconds.
+The program serially scans the filtered universe and writes results to `output/expma_screen_<timestamp>.csv`, a matching `.json`, and an Excel-friendly `.xlsx`. A first full-market scan takes about **20–40 minutes** depending on the network; reruns on the same trading day use the cache and usually finish in seconds to tens of seconds.
+
+> **Excel / WPS users: open the `.xlsx` file.** Its code column is stored as text, so leading zeros in codes such as `002187` are preserved. The CSV/JSON keep the raw code strings, but spreadsheet apps may strip leading zeros if you open the CSV and save it.
 
 ### Common options
 

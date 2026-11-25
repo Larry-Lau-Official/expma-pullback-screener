@@ -7,7 +7,8 @@ __pycache__/
 output/.cache/
 output/expma_screen_*.csv
 output/expma_screen_*.json
-output/scan_*.log
+output/expma_screen_*.xlsx
+output/*.log
 output/archive/
 processed_image_*.png
 

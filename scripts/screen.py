@@ -399,6 +399,42 @@ def analyze(stock: dict, bars: list[dict], cfg: dict) -> dict | None:
 # ---------------------------------------------------------------------------
 # 结果保存与展示
 # ---------------------------------------------------------------------------
+def _write_xlsx(path: str, results: list[dict], fields: list[str]) -> bool:
+    """写 Excel/WPS 友好版：代码列强制为文本，避免前导 0 被表格软件吃掉。"""
+    try:
+        from openpyxl import Workbook
+        from openpyxl.styles import Alignment, Font
+        from openpyxl.utils import get_column_letter
+    except ImportError:
+        print("      未安装 openpyxl，跳过 xlsx 输出（pip install openpyxl）", flush=True)
+        return False
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "EXPMA筛选结果"
+    ws.append(fields)
+    for cell in ws[1]:
+        cell.font = Font(bold=True)
+        cell.alignment = Alignment(horizontal="center")
+    for row in results:
+        ws.append([row.get(f) for f in fields])
+
+    if "代码" in fields and results:
+        col = fields.index("代码") + 1
+        for r in range(2, ws.max_row + 1):
+            cell = ws.cell(row=r, column=col)
+            cell.value = str(cell.value or "").zfill(6)
+            cell.number_format = "@"          # 文本格式，保留 002187 这类前导 0
+
+    for i, field in enumerate(fields, 1):
+        sample = [len(str(r.get(field, ""))) for r in results[:200]]
+        width = max([len(field) * 2] + sample) + 2
+        ws.column_dimensions[get_column_letter(i)].width = min(max(width, 10), 30)
+    ws.freeze_panes = "A2"
+    wb.save(path)
+    return True
+
+
 def save_results(results: list[dict], cfg: dict, out_dir: str,
                  scope: str = "") -> tuple[str, str]:
     results.sort(key=lambda x: (x["状态"] != "命中", -x["评分"]))
@@ -409,6 +445,7 @@ def save_results(results: list[dict], cfg: dict, out_dir: str,
     stamp = datetime.now().strftime("%Y%m%d_%H%M")
     csv_path = os.path.join(out_dir, f"expma_screen_{stamp}.csv")
     json_path = os.path.join(out_dir, f"expma_screen_{stamp}.json")
+    xlsx_path = os.path.join(out_dir, f"expma_screen_{stamp}.xlsx")
     fields = [k for k in results[0].keys() if not k.startswith("_")] if results else []
 
     with open(csv_path, "w", newline="", encoding="utf-8-sig") as fh:
@@ -420,8 +457,12 @@ def save_results(results: list[dict], cfg: dict, out_dir: str,
         json.dump({"generated_at": datetime.now().isoformat(timespec="seconds"),
                    "config": cfg, "scope": scope, "count": len(results),
                    "results": results}, fh, ensure_ascii=False, indent=2)
+    xlsx_ok = _write_xlsx(xlsx_path, results, fields) if results else False
 
-    print(f"[3/3] 结果已保存：\n      {csv_path}\n      {json_path}", flush=True)
+    saved = f"      {csv_path}\n      {json_path}"
+    if xlsx_ok:
+        saved += f"\n      {xlsx_path}（Excel/WPS 用这个，代码保留前导 0）"
+    print(f"[3/3] 结果已保存：\n{saved}", flush=True)
     if results:
         show = ["代码", "名称", "最新价", "总市值(亿)", "状态", "回踩日",
                 "回踩偏离%", "当前偏离EMA2%", "阶段涨幅%", "涨停次数", "回调交易日", "评分"]
@@ -432,7 +473,7 @@ def save_results(results: list[dict], cfg: dict, out_dir: str,
         for row in results[:50]:
             print(" | ".join(str(row[c]).ljust(widths[c]) for c in cols))
         if len(results) > 50:
-            print(f"... 其余 {len(results) - 50} 只见 CSV 文件")
+            print(f"... 其余 {len(results) - 50} 只见结果文件")
     return csv_path, json_path
 
 

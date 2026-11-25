@@ -70,7 +70,7 @@ cd expma-pullback-screener
 python -m pip install -r requirements.txt
 ```
 
-`requirements.txt` 只声明 `baostock==0.9.4`，pandas / numpy 等依赖由 pip 自动安装。**不提交 `vendor/` 二进制目录**，避免不同 Python 版本或操作系统下的兼容问题。
+`requirements.txt` 声明 `baostock==0.9.4` 与 `openpyxl==3.1.5`，pandas / numpy 等依赖由 pip 自动安装。**不提交 `vendor/` 二进制目录**，避免不同 Python 版本或操作系统下的兼容问题。
 
 ### 作为 WorkBuddy 技能使用
 
@@ -96,7 +96,9 @@ git clone <仓库地址> ~/.workbuddy/skills/expma-pullback-screener
 python scripts/screen.py
 ```
 
-程序会串行扫描过滤后的全市场股票，结果输出到 `output/expma_screen_<时间戳>.csv` 与同名 `.json`。首次全市场扫描约需 20–40 分钟（取决于网络）；同一交易日内再次运行走缓存，通常几秒到几十秒。
+程序会串行扫描过滤后的全市场股票，结果输出到 `output/expma_screen_<时间戳>.csv`、同名 `.json` 和 `.xlsx`。首次全市场扫描约需 20–40 分钟（取决于网络）；同一交易日内再次运行走缓存，通常几秒到几十秒。
+
+> **Excel / WPS 用户请打开 `.xlsx` 文件**：其中「代码」列按文本保存，`002187` 这类前导 0 不会丢。CSV / JSON 保留原始代码字符串，但用表格软件打开 CSV 后一旦保存，前导 0 可能被自动吃掉。
 
 ### 常用参数
 
