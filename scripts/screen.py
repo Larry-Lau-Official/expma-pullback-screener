@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-EXPMA 回踩选股器 —— 筛选"上涨后回调至 EMA2 附近"的 A 股个股。
+EXPMA 回踩选股器 —— 筛选"上涨后回调至 EMA1 / EMA2 附近"的 A 股个股。
 
 筛选逻辑（可用命令行参数覆盖）：
   1. 排除 ST / *ST / 退市、科创板(688/689)、北交所(43/83/87/92/8 开头)
@@ -9,10 +9,13 @@ EXPMA 回踩选股器 —— 筛选"上涨后回调至 EMA2 附近"的 A 股个�
   3. 高点到最新交易日之间的交易日数 <= max_pullback（默认 10）
   4. 高点之前 rise_window 天内定位起涨低点，阶段涨幅 >= min_rise
   5. 上涨段内至少出现 min_limit_ups 次涨停（主板 9.8%、创业板 19.8%）
-  6. 最新交易日收盘价落在当日 EMA2 的 ±ema2_tol 范围内（只看收盘价，不看盘中最低价）
+  6. 两组并列判定，各自校验对应均线在回调区间（阶段高点到最新交易日）内从未被收盘价跌破：
+     EMA2 组：收盘价在当日 EMA2 的 0 ~ +ema2_tol 区间（负偏离不算）且回调期间未跌破 EMA2；
+     EMA1 组：收盘价落在当日 EMA1 ±ema1_tol 内且回调期间未跌破 EMA1。
+     只看收盘价，不看盘中最低价，用"命中组"字段标注
   7. 按命中强度、涨停次数、涨幅、均线趋势、回调量能等指标打分排序
 
-数据源：BaoStock（证券宝，默认，依赖在 vendor/），网页接口（新浪/东财/腾讯）作为备用。
+数据源：BaoStock（证券宝，默认，依赖见 requirements.txt；本地 vendor/ 可选），网页接口（新浪/东财/腾讯）作为备用。
 """
 from __future__ import annotations
 
@@ -31,7 +34,8 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DEFAULT_CFG = {
     "ema_short": 12,          # EXPMA 短期线 EMA1（东方财富默认）
     "ema_long": 50,           # EXPMA 长期线 EMA2（东方财富默认）
-    "ema2_tol": 0.015,        # 最新交易日收盘价距 EMA2 容差 ±1.5%（硬条件）
+    "ema2_tol": 0.02,         # EMA2 组只接受 0 ~ +2% 偏离（负偏离不算，硬条件，并列组一）
+    "ema1_tol": 0.01,         # 最新交易日收盘价距 EMA1 容差 ±1%（硬条件，并列组二）
     "max_pullback": 10,       # 高点到最新的最大回调交易日数
     "min_rise": 20.0,         # 阶段最小涨幅 %
     "rise_window": 60,        # 起涨点向前搜索窗口（交易日）
@@ -331,23 +335,37 @@ def analyze(stock: dict, bars: list[dict], cfg: dict) -> dict | None:
     if len(limit_days) < cfg["min_limit_ups"]:
         return None
 
-    # 4) 只看数据源最新交易日的收盘价是否贴近 EMA2
-    #    用户口径：盘中触及但收盘已反弹超出 ±1.5% 的一律不算；
-    #    最低价不参与判定，也没有"接近中"备选。
-    #    价格最小变动单位 0.01 元，EMA2 为浮点值，附加 0.02 元精度缓冲。
-    tol = cfg["ema2_tol"]
-    e2_last = e2[-1]
-    if e2_last <= 0:
+    # 4) 均线贴合判定（两组并列），只看收盘价，不看盘中最低价。
+    #    每组各自要求：回调区间（阶段高点当天至最新交易日）内收盘价从未跌破对应均线。
+    #    EMA2 组只接受最新收盘价高于（或等于）EMA2 的 0 ~ +ema2_tol 偏离，负偏离不算；
+    #    EMA1 组接受 ±ema1_tol 偏离（因回调不破约束，负偏离实际会被排除，
+    #    有效区间为 0 ~ +ema1_tol），另加 0.02 元价格精度缓冲。
+    #    均线按两位小数比较，与行情软件显示一致，避免浮点尾差误判。
+    last_close = close[-1]
+    e2_last, e1_last = e2[-1], e1[-1]
+    dc2 = last_close - e2_last if e2_last > 0 else float("inf")
+    dc1 = last_close - e1_last if e1_last > 0 else float("inf")
+    e2_upper = round(e2_last * (1 + cfg["ema2_tol"]), 2) if e2_last > 0 else -1
+    e2_positive = e2_last > 0 and round(e2_last, 2) <= last_close <= e2_upper
+    held_e2 = all(close[i] >= round(e2[i], 2) for i in range(peak, n))
+    held_e1 = all(close[i] >= round(e1[i], 2) for i in range(peak, n))
+    hit2 = e2_positive and held_e2
+    hit1 = (e1_last > 0 and abs(dc1) <= e1_last * cfg["ema1_tol"] + 0.02
+            and held_e1)
+    if not (hit1 or hit2):       # 两组都不满足，直接排除
         return None
-    dc_last = close[-1] - e2_last
-    band = e2_last * tol + 0.02  # 百分比容差 + 2 分钱价格精度缓冲
-    if abs(dc_last) > band:      # 收盘价超出 ±1.5%，直接排除
-        return None
+    if hit1 and hit2:
+        group = "EMA1+EMA2"
+    elif hit1:
+        group = "EMA1"
+    else:
+        group = "EMA2"
 
     is_hit = not pullback_over   # 回调略超 10 日者仍保留为备选
     touch = n - 1
     touch_kind = "收盘价"
-    total_dev = dc_last / e2_last * 100
+    # 回踩偏离以命中的均线为准；双命中时优先展示策略核心 EMA2
+    ref_dev = dc1 / e1_last * 100 if (hit1 and not hit2) else dc2 / e2_last * 100
 
     # 5) 评分（仅用于排序，过滤条件仍需全部满足）
     score = 0.0
@@ -357,7 +375,10 @@ def analyze(stock: dict, bars: list[dict], cfg: dict) -> dict | None:
         score += 8
     if e2[-1] > e2[max(0, n - 6)]:
         score += 6
-    score += 10                  # 收盘价贴近 EMA2（已通过硬条件）
+    if hit1:                     # 贴近 EMA1 / EMA2 各 +10，双命中 +20
+        score += 10
+    if hit2:
+        score += 10
     if pullback_over:
         score -= 12
 
@@ -367,8 +388,6 @@ def analyze(stock: dict, bars: list[dict], cfg: dict) -> dict | None:
     if vol_shrink < 0.8:
         score += 8
 
-    cur_dev = total_dev          # 判定与显示统一用最新交易日收盘价偏离
-
     return {
         "代码": stock["code"],
         "名称": stock["name"],
@@ -377,11 +396,14 @@ def analyze(stock: dict, bars: list[dict], cfg: dict) -> dict | None:
                        if stock.get("mktcap") else None),
         "最新涨幅%": round(pct[-1], 2),
         "状态": "命中" if is_hit else "备选(回调超10日)",
+        "命中组": group,
         "回踩日": bars[touch]["date"],
         "回踩方式": touch_kind,
+        "回踩日EMA1": round(e1[touch], 2),
         "回踩日EMA2": round(e2[touch], 2),
-        "回踩偏离%": round(total_dev, 2),
-        "当前偏离EMA2%": round(cur_dev, 2),
+        "回踩偏离%": round(ref_dev, 2),
+        "当前偏离EMA1%": round(dc1 / e1_last * 100, 2) if e1_last > 0 else None,
+        "当前偏离EMA2%": round(dc2 / e2_last * 100, 2) if e2_last > 0 else None,
         "起涨日": bars[start]["date"],
         "高点日": bars[peak]["date"],
         "阶段涨幅%": round(rise_pct, 2),
@@ -464,8 +486,9 @@ def save_results(results: list[dict], cfg: dict, out_dir: str,
         saved += f"\n      {xlsx_path}（Excel/WPS 用这个，代码保留前导 0）"
     print(f"[3/3] 结果已保存：\n{saved}", flush=True)
     if results:
-        show = ["代码", "名称", "最新价", "总市值(亿)", "状态", "回踩日",
-                "回踩偏离%", "当前偏离EMA2%", "阶段涨幅%", "涨停次数", "回调交易日", "评分"]
+        show = ["代码", "名称", "最新价", "总市值(亿)", "状态", "命中组", "回踩日",
+                "回踩偏离%", "当前偏离EMA1%", "当前偏离EMA2%", "阶段涨幅%",
+                "涨停次数", "回调交易日", "评分"]
         cols = [c for c in show if c in fields]
         widths = {c: max(len(c), *(len(str(r[c])) for r in results[:50])) for c in cols}
         print("\n" + " | ".join(c.ljust(widths[c]) for c in cols))
@@ -729,7 +752,9 @@ def run(cfg: dict, workers: int, limit: int, out_dir: str,
 def main() -> int:
     parser = argparse.ArgumentParser(description="EXPMA(12,50) 回踩 EMA2 选股器")
     parser.add_argument("--ema2-tol", type=float, default=DEFAULT_CFG["ema2_tol"],
-                        help="EMA2 回踩容差，默认 0.015（±1.5%%）")
+                        help="EMA2 回踩容差，只接受 0 ~ +容差的正偏离，默认 0.02（+2%%）")
+    parser.add_argument("--ema1-tol", type=float, default=DEFAULT_CFG["ema1_tol"],
+                        help="EMA1 回踩容差，默认 0.01（±1%%）")
     parser.add_argument("--max-pullback", type=int, default=DEFAULT_CFG["max_pullback"],
                         help="高点后最大回调交易日数，默认 10")
     parser.add_argument("--min-rise", type=float, default=DEFAULT_CFG["min_rise"],
@@ -754,6 +779,7 @@ def main() -> int:
     cfg = dict(DEFAULT_CFG)
     cfg.update({
         "ema2_tol": args.ema2_tol,
+        "ema1_tol": args.ema1_tol,
         "max_pullback": args.max_pullback,
         "min_rise": args.min_rise,
         "min_limit_ups": args.min_limit_ups,

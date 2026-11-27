@@ -10,7 +10,7 @@
 > - Market data comes from third-party services and **the copyright belongs to the respective providers**. This project does not bundle, distribute, resell, or publicly disclose any market data. Users must comply with the terms of service of the relevant providers.
 > - Do not use this project for any unlawful purpose. Do not redistribute, resell, leak or publicly disclose cached market data or result files.
 
-A command-line tool that screens A-share stocks using the EXPMA(12, 50) indicator. It can also be installed as a WorkBuddy skill. It looks for stocks that have **completed a run-up containing at least one limit-up day, then pulled back so that the latest trading day's close sits within ±1.5% of EMA2 (the long-term line)** — in other words, stocks that are *just approaching EMA2 and have not yet bounced away*, not stocks that touched EMA2 earlier and have already rallied.
+A command-line tool that screens A-share stocks using the EXPMA(12, 50) indicator. It can also be installed as a WorkBuddy skill. It looks for stocks that have **completed a run-up containing at least one limit-up day and are now pulling back without any close below their own reference average** — the EMA2 group requires the latest close 0 to +2% above EMA2 (long-term line) with no close below EMA2 during the pullback; the EMA1 group requires the close within ±1% of EMA1 (short-term line) with no close below EMA1 during the pullback. In other words, stocks *just approaching a moving average without breaking it*, not stocks that touched it earlier and have already rallied. The two conditions are reported as parallel groups, distinguished by the `命中组` (matched group) field.
 
 ## 1. Strategy
 
@@ -31,13 +31,16 @@ The two thresholds can be changed with `--max-mktcap` (unit: CNY 10,000 / `万�
 2. **Run-up leg**: the lowest low within the 60 trading days before the swing high; the run-up gain must be **≥ 20%**.
 3. **Limit-up requirement**: at least **one limit-up day** between the run-up start and the swing high (main board: 9.8%, ChiNext: 19.8%). This is a hard condition.
 4. **Pullback length**: the interval from the swing high to the latest trading day must be **≤ 10 trading days**. Eleven to twelve days are kept as `Watchlist (pullback >10 days)`; more than 12 days are excluded.
-5. **EMA2 touch**: **only the latest trading day's close from the data source is considered**. The relative deviation between that close and the same day's EMA2 must be within **±1.5%**. If the intraday low touched EMA2 but the close bounced more than 1.5% away, the stock is excluded; there is no "almost there" fallback bucket.
-   - Because A-shares tick at CNY 0.01 while EMA2 is a floating-point value, an extra **CNY 0.02** precision buffer is added to the tolerance.
-   - EXPMA parameters are EMA1 = 12 days and EMA2 = 50 days, matching Eastmoney's defaults.
+5. **EMA touch (two parallel groups)**: **only closing prices are considered**, and each moving average is judged independently:
+   - **EMA2 group**: the latest close sits **0 to +2% above** the same day's EMA2 — negative deviation (close below EMA2) does not count — **and** no close from the swing-high day through the latest day is below that day's EMA2 ("pullback without breaking EMA2").
+   - **EMA1 group**: relative deviation between the latest close and the same day's EMA1 within **±1%** (shallower pullback, just at the short-term line), and no close in the pullback window may fall below that day's EMA1 ("pullback without breaking EMA1"). Because of the no-break rule, a below-EMA1 close is excluded in practice, so the effective range is 0 to +1%.
+   - The two groups are parallel — matching either one is enough. Matching both is labelled `EMA1+EMA2`. If the intraday low touched an average but the close bounced beyond the corresponding tolerance, the stock is excluded; there is no "almost there" fallback bucket.
+   - EMA values are rounded to CNY 0.01 before comparison (matching what charting software displays) to avoid floating-point artifacts; the EMA1 group additionally keeps a **CNY 0.02** precision buffer.
+   - EXPMA parameters are EMA1 = 12 days and EMA2 = 50 days, matching Eastmoney's defaults. Tolerances can be tuned with `--ema2-tol` and `--ema1-tol`.
 
 ### 1.3 Scoring (ordering only)
 
-Once all hard conditions are met, a score is assigned using: number of limit-ups, run-up gain, whether EMA1 is above EMA2, whether EMA2 is rising, and whether volume contracted during the pullback (pullback average volume < run-up average volume × 0.8). **The score only determines result order; it does not affect selection.**
+Once all hard conditions are met, a score is assigned using: number of limit-ups, run-up gain, whether EMA1 is above EMA2, whether EMA2 is rising, +10 for an EMA1 match and +10 for an EMA2 match (+20 if both), and whether volume contracted during the pullback (pullback average volume < run-up average volume × 0.8). **The score only determines result order; it does not affect selection.**
 
 ### 1.4 Pattern examples
 
@@ -103,7 +106,8 @@ The program serially scans the filtered universe and writes results to `output/e
 ### Common options
 
 ```bash
-python scripts/screen.py --ema2-tol 0.02       # widen EMA2 tolerance to ±2%
+python scripts/screen.py --ema2-tol 0.025      # widen EMA2 positive-deviation cap to +2.5%
+python scripts/screen.py --ema1-tol 0.008      # tighten EMA1 tolerance to ±0.8%
 python scripts/screen.py --max-pullback 8      # tighten pullback length to 8 trading days
 python scripts/screen.py --min-rise 30         # require at least 30% run-up gain
 python scripts/screen.py --min-limit-ups 2     # require at least 2 limit-ups in the run-up
@@ -132,11 +136,12 @@ The raw CSV/JSON headers are Chinese. The table below maps them to English.
 | 最新涨幅% | Latest daily change (%) |
 | 总市值(亿) | Market cap in units of CNY 100 million, from the Sina snapshot |
 | 状态 | `命中` = Hit; `备选(回调超10日)` = Watchlist (pullback 11–12 days) |
+| 命中组 | `EMA2` = above the long-term line with no close below EMA2 during pullback; `EMA1` = near the short-term line with no close below EMA1 during pullback; `EMA1+EMA2` = both matched without breaking either average |
 | 回踩日 | Touch date (the latest trading day) |
 | 回踩方式 | Touch method; currently always `收盘价` (close price) |
-| 回踩日EMA2 | EMA2 on the touch date |
-| 回踩偏离% | Deviation on the touch date (%) |
-| 当前偏离EMA2% | Latest close deviation from EMA2 (%); closer to 0 is tighter |
+| 回踩日EMA1 / 回踩日EMA2 | EMA1 / EMA2 on the touch date |
+| 回踩偏离% | Deviation from the matched average on the touch date (%) — uses EMA2 when both match; always ≥ 0 for both groups due to the no-break rule |
+| 当前偏离EMA1% / 当前偏离EMA2% | Latest close deviation from EMA1 / EMA2 (%); closer to 0 is tighter |
 | 起涨日 | Run-up start date |
 | 高点日 | Swing-high date |
 | 阶段涨幅% | Run-up gain (%) |

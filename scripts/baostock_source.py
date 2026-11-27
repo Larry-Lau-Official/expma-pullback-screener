@@ -11,7 +11,7 @@ BaoStock（证券宝）数据源封装 —— 稳定、免费、免注册的服�
 兼容性处理：
   - BaoStock 0.9.4 在 Python 3.13 + 新 pandas 下 rs.next() 会死循环，
     直接读 rs.data（二维列表）绕过。
-  - 依赖装在 skill 根目录的 vendor/ 下（离线可用，不污染系统环境）。
+  - 依赖通过 requirements.txt 安装；本地若存在 skill 根目录的 vendor/ 则优先使用（离线可用）。
 """
 from __future__ import annotations
 
