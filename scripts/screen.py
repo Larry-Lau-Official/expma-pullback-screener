@@ -771,9 +771,9 @@ def main() -> int:
     parser.add_argument("--source", choices=["baostock", "web"], default="baostock",
                         help="数据源：baostock（默认，稳定）/ web（网页接口，易被风控）")
     parser.add_argument("--max-mktcap", type=float, default=DEFAULT_CFG["max_mktcap"],
-                        help="最大总市值（万元），默认 5000000（500 亿）")
+                        help="最大总市值（万元），默认 3000000（300 亿）")
     parser.add_argument("--max-price", type=float, default=DEFAULT_CFG["max_price"],
-                        help="最大当前股价（元），默认 100")
+                        help="最大当前股价（元），默认 50")
     args = parser.parse_args()
 
     cfg = dict(DEFAULT_CFG)
